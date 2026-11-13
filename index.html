@@ -1,0 +1,683 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Night Sky</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@200;300;400&display=swap" rel="stylesheet">
+<style>
+  :root { --cmd-fg: #cccccc; --cmd-bg: #0c0c0c; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  body { font-family: 'Kanit', system-ui, sans-serif; color: #fff; -webkit-font-smoothing: antialiased; }
+  canvas#sky { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* ---------- desktop icon ---------- */
+  .desk-icon {
+    position: fixed; top: 20px; left: 20px; z-index: 5; width: 88px; padding: 8px 4px 6px;
+    display: flex; flex-direction: column; align-items: center; gap: 7px;
+    border: 1px solid transparent; border-radius: 4px; background: none; color: #fff;
+    font: 12px 'Segoe UI', system-ui, sans-serif; text-shadow: 0 1px 2px #000;
+    opacity: 0; pointer-events: none; transition: opacity 1.2s; cursor: default;
+  }
+  .desk-icon.show { opacity: 1; pointer-events: auto; }
+  .desk-icon:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.16); }
+  .desk-icon .img {
+    width: 46px; height: 38px; background: #0c0c0c; border: 2px solid #a7adb5; border-top-width: 8px;
+    border-radius: 3px; font: bold 11px Consolas, monospace; color: #ddd;
+    display: flex; align-items: center; padding-left: 4px;
+  }
+  .desk-icon.pulse .img { animation: glow 1.8s ease-in-out infinite; }
+  @keyframes glow { 50% { box-shadow: 0 0 22px 4px rgba(130,180,255,.6); } }
+
+  /* ---------- intro text on the black screen ---------- */
+  #intro {
+    position: fixed; inset: 0; z-index: 3; pointer-events: none;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; padding: 0 24px; text-align: center; transition: opacity 1.2s;
+  }
+  #intro.hide { opacity: 0; }
+  #intro p {
+    margin: 0; font-weight: 300; font-size: clamp(22px, 3.2vw, 36px); color: #ecebff;
+    opacity: 0; transform: translateY(8px); transition: opacity 1.6s, transform 1.6s;
+  }
+  #intro p.small { font-size: clamp(15px, 1.8vw, 20px); color: #9ea6cc; max-width: 640px; line-height: 1.6; }
+  #intro p.show { opacity: 1; transform: none; }
+
+  /* ---------- cmd.exe window ---------- */
+  .cmd {
+    position: fixed; z-index: 10; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(780px, calc(100vw - 24px));
+    background: var(--cmd-bg); border: 1px solid #3a3a3a; border-radius: 8px; overflow: hidden;
+    box-shadow: 0 24px 70px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.03);
+    display: none;
+  }
+  .cmd.open { display: block; animation: pop .18s ease-out; }
+  .cmd.moved { transform: none; }
+  @keyframes pop { from { opacity: 0; scale: .97; } }
+  .cmd-bar {
+    height: 34px; display: flex; align-items: center; background: #1f1f1f; color: #fff;
+    font: 12px 'Segoe UI', system-ui, sans-serif; user-select: none; cursor: default; touch-action: none;
+  }
+  .cmd-bar .ic { width: 16px; height: 13px; margin: 0 10px 0 12px; background: #0c0c0c; border: 1px solid #aaa; border-top-width: 3px; }
+  .cmd-bar .t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cmd-bar button {
+    width: 46px; height: 34px; border: 0; background: none; color: #fff;
+    font: 13px 'Segoe UI Symbol', 'Segoe UI', sans-serif; cursor: default;
+  }
+  .cmd-bar button:hover { background: rgba(255,255,255,.1); }
+  .cmd-bar button.x:hover { background: #c42b1c; }
+  .cmd-body {
+    height: min(400px, 56vh); overflow-y: auto; padding: 6px 10px 12px;
+    font: 16px/1.32 'Cascadia Mono', Consolas, 'Courier New', 'Kanit', monospace;
+    color: var(--cmd-fg); cursor: text;
+    scrollbar-width: thin; scrollbar-color: #4a4a4a transparent;
+  }
+  .cmd.max .cmd-body { height: calc(100vh - 120px); }
+  .ln { white-space: pre-wrap; word-break: break-word; min-height: 1.32em; }
+  .ok { color: #8be9a8; }
+  .row { display: flex; }
+  .row .ps { white-space: pre; }
+  #cmd {
+    flex: 1; min-width: 0; background: none; border: 0; outline: 0; padding: 0;
+    color: inherit; font: inherit; caret-color: var(--cmd-fg);
+  }
+
+  /* ---------- guide pill ---------- */
+  #guide {
+    position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 8px); z-index: 12;
+    max-width: calc(100vw - 32px); padding: 10px 20px; border-radius: 999px;
+    background: rgba(18, 20, 40, .78); border: 1px solid rgba(160,170,255,.25);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    color: #e2e5ff; font-weight: 300; font-size: clamp(14px, 1.6vw, 17px); text-align: center;
+    opacity: 0; pointer-events: none; transition: opacity .5s, transform .5s;
+  }
+  #guide.show { opacity: 1; transform: translate(-50%, 0); }
+  #guide code {
+    font-family: 'Cascadia Mono', Consolas, monospace; font-size: .95em;
+    background: rgba(255,255,255,.12); padding: 1px 7px; border-radius: 5px; color: #fff;
+  }
+
+  /* ---------- Windows-style message box ---------- */
+  #mbWrap {
+    position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.25);
+  }
+  #mbWrap.show { display: flex; }
+  .mb {
+    width: min(400px, calc(100vw - 32px)); background: #2b2b2b; border: 1px solid #454545; border-radius: 8px;
+    box-shadow: 0 24px 64px rgba(0,0,0,.6); overflow: hidden; color: #fff; animation: pop .15s ease-out;
+    font: 14px 'Segoe UI', system-ui, sans-serif;
+  }
+  .mb-bar { height: 32px; display: flex; align-items: center; padding-left: 14px; font-size: 12px; }
+  .mb-bar span { flex: 1; }
+  .mb-bar button { width: 46px; height: 32px; border: 0; background: none; color: #fff; font: 13px 'Segoe UI Symbol', sans-serif; }
+  .mb-bar button:hover { background: #c42b1c; }
+  .mb-body { display: flex; gap: 16px; padding: 14px 22px 24px; align-items: flex-start; }
+  .mb-ico {
+    flex: none; width: 34px; height: 34px; border-radius: 50%; background: #4cc2ff; color: #000;
+    display: grid; place-items: center; font: bold 19px 'Segoe UI', sans-serif;
+  }
+  .mb-text { font-family: 'Kanit', sans-serif; font-weight: 300; font-size: 17px; line-height: 1.55; white-space: pre-line; padding-top: 3px; }
+  .mb-foot { background: #202020; padding: 16px 20px; display: flex; justify-content: flex-end; }
+  .mb-foot button {
+    min-width: 100px; height: 32px; border-radius: 4px; border: 1px solid #6fd3ff;
+    background: #4cc2ff; color: #000; font: 14px 'Segoe UI', sans-serif; cursor: pointer;
+  }
+  .mb-foot button:hover { background: #47b1e8; }
+
+  /* ---------- final message ---------- */
+  #msg {
+    position: fixed; inset: 0; z-index: 4; pointer-events: none;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 0 24px; text-align: center;
+  }
+  #msg p {
+    margin: 0; font-weight: 300; font-size: clamp(26px, 4.4vw, 54px); color: #fff;
+    text-shadow: 0 0 26px rgba(255,170,220,.55), 0 0 3px rgba(255,255,255,.5);
+    opacity: 0; transform: translateY(12px); transition: opacity 2.2s ease, transform 2.2s ease;
+  }
+  #msg p.sub { font-size: clamp(20px, 3vw, 36px); color: #ffdcef; }
+  #msg p.show { opacity: 1; transform: none; }
+
+  /* ---------- taskbar button when cmd is minimised ---------- */
+  #task {
+    position: fixed; left: 16px; bottom: 16px; z-index: 11; display: none; align-items: center; gap: 9px;
+    padding: 8px 14px; border-radius: 8px; background: rgba(32,32,32,.82); border: 1px solid #454545;
+    color: #fff; font: 13px 'Segoe UI', system-ui, sans-serif; cursor: pointer;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  #task.show { display: flex; }
+  #task .ic { width: 16px; height: 13px; background: #0c0c0c; border: 1px solid #aaa; border-top-width: 3px; }
+</style>
+</head>
+<body>
+<canvas id="sky"></canvas>
+
+<button class="desk-icon" id="deskIcon" title="Command Prompt">
+  <span class="img">C:\&gt;_</span>
+  <span>Command Prompt</span>
+</button>
+
+<div id="intro"></div>
+<div id="msg"></div>
+
+<div class="cmd" id="cmdWin" role="dialog" aria-label="Command Prompt">
+  <div class="cmd-bar" id="cmdBar">
+    <span class="ic"></span>
+    <span class="t" id="cmdTitle">Command Prompt</span>
+    <button id="bMin" title="Minimize">&#x2014;</button>
+    <button id="bMax" title="Maximize">&#x25A2;</button>
+    <button id="bClose" class="x" title="Close">&#x2715;</button>
+  </div>
+  <div class="cmd-body" id="out">
+    <div class="row" id="row"><span class="ps" id="ps"></span><input id="cmd" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="command"></div>
+  </div>
+</div>
+
+<div id="guide"></div>
+<button id="task"><span class="ic"></span>Command Prompt</button>
+
+<div id="mbWrap">
+  <div class="mb" role="alertdialog">
+    <div class="mb-bar"><span>smile.bat</span><button id="mbX">&#x2715;</button></div>
+    <div class="mb-body"><div class="mb-ico">i</div><div class="mb-text" id="mbText"></div></div>
+    <div class="mb-foot"><button id="mbOk">OK</button></div>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   ✿ แก้ข้อความตรงนี้ได้เลย ✿
+   ===================================================================== */
+const CONFIG = {
+  user: 'Star',   // ชื่อใน prompt  C:\Users\Star>
+  intro: [
+    'ท้องฟ้าวันนี้มันดูมืด ๆ นะ...',
+    'พี่ช่วยอะไรหน่อยได้มั้ย?',
+  ],
+  introHint: 'ลองเปิด cmd ที่มุมซ้ายบน แล้วไปดูในโฟลเดอร์ NightSky หน่อยว่ามีอะไรอยู่บ้าง',
+  // ข้อความ alert ตอนเปิด smile.bat ครั้งแรก
+  alert: 'วันนี้ได้ยิ้มบ้างรึยัง? 🙂\nลองยิ้มดูก่อน แล้วเปิดไฟล์นี้อีกรอบสิ',
+  // ข้อความตอนจบ (บรรทัดแรกตัวใหญ่ ที่เหลือตัวรอง)
+  final: [
+    'เห็นมั้ย ว่าพี่ยิ้มมันน่ารักแค่ไหน',
+    'ขนาดดาวยังรีบมาดูเลย ✨',
+  ],
+};
+</script>
+
+<script>
+(() => {
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const ri = (a, b) => Math.floor(rand(a, b + 1));
+  const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const $ = id => document.getElementById(id);
+
+  // =================================================================
+  //  SKY (smooth canvas, looking straight up)
+  // =================================================================
+  const cv = $('sky'), ctx = cv.getContext('2d');
+  let W, H, DPR, bg, glow, stars = [], meteors = [];
+  let skyA = 0, skyTarget = 0, revealAt = -1, autoRate = 0, time = 0;
+
+  function resize() {
+    DPR = Math.min(2, devicePixelRatio || 1);
+    // a background/hidden tab can report a 0×0 viewport at load; never build with zero size
+    W = Math.max(innerWidth, 2); H = Math.max(innerHeight, 2);
+    cv.width = W * DPR; cv.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    build();
+  }
+
+  function build() {
+    // soft glow sprite reused for every star
+    glow = document.createElement('canvas'); glow.width = glow.height = 64;
+    const g = glow.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,1)');
+    gr.addColorStop(0.12, 'rgba(255,255,255,.6)');
+    gr.addColorStop(0.35, 'rgba(200,210,255,.16)');
+    gr.addColorStop(1, 'rgba(200,210,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+
+    // background: deep zenith in the middle, faint glow toward the edges, milky way
+    bg = document.createElement('canvas'); bg.width = W * DPR; bg.height = H * DPR;
+    const b = bg.getContext('2d'); b.setTransform(DPR, 0, 0, DPR, 0, 0);
+    const R = Math.hypot(W, H) / 2, rg = b.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, R);
+    rg.addColorStop(0, '#04061a'); rg.addColorStop(0.55, '#0b0d2c'); rg.addColorStop(0.85, '#1a1240'); rg.addColorStop(1, '#2e1745');
+    b.fillStyle = rg; b.fillRect(0, 0, W, H);
+
+    const x0 = -W * 0.1, y0 = H * 1.1, x1 = W * 1.1, y1 = -H * 0.1;
+    const L = Math.hypot(x1 - x0, y1 - y0), nx = -(y1 - y0) / L, ny = (x1 - x0) / L;
+    const band = Math.min(W, H) * 0.15;
+    const at = (k, off) => [x0 + (x1 - x0) * k + nx * off, y0 + (y1 - y0) * k + ny * off];
+    b.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 80; i++) {
+      const [x, y] = at(Math.random(), gauss() * band * 0.6), r = band * rand(0.5, 1.4);
+      const col = ['120,90,210', '190,110,210', '90,120,230', '235,140,205'][ri(0, 3)];
+      const cg = b.createRadialGradient(x, y, 0, x, y, r);
+      cg.addColorStop(0, `rgba(${col},.07)`); cg.addColorStop(1, `rgba(${col},0)`);
+      b.fillStyle = cg; b.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    const dust = Math.floor(W * H / 16);
+    for (let i = 0; i < dust; i++) {
+      const k = Math.random(), w = band * (0.8 + 0.4 * Math.sin(k * 9)), off = gauss() * w;
+      const [x, y] = at(k, off), s = rand(0.4, 1.1);
+      b.fillStyle = `rgba(255,${ri(215, 255)},${ri(230, 255)},${rand(0.05, 0.35) * Math.max(0, 1 - Math.abs(off) / (w * 1.6))})`;
+      b.fillRect(x, y, s, s);
+    }
+    b.globalCompositeOperation = 'source-over';
+    for (let i = 0; i < dust / 6; i++) {
+      const k = Math.random(), [x, y] = at(k, gauss() * band * 0.1 + Math.sin(k * 12) * band * 0.1);
+      b.fillStyle = 'rgba(4,6,26,.22)'; b.beginPath(); b.arc(x, y, rand(1, 3), 0, 7); b.fill();
+    }
+
+    // stars: each one starts far outside the screen and rushes to its place
+    const placed = revealAt >= 0;
+    stars = [];
+    const n = Math.floor(W * H / 1300), diag = Math.hypot(W, H);
+    for (let i = 0; i < n; i++) {
+      const x = rand(0, W), y = rand(0, H), a = Math.atan2(y - H / 2, x - W / 2) + rand(-0.3, 0.3), far = diag * rand(0.5, 0.9);
+      stars.push({
+        x, y, sx: x + Math.cos(a) * far, sy: y + Math.sin(a) * far,
+        r: Math.random() < 0.08 ? rand(1.2, 2) : rand(0.4, 1.1),
+        tw: rand(0.6, 2.4), ph: rand(0, 6.28),
+        c: ['255,255,255', '210,225,255', '255,240,210', '255,210,240'][ri(0, 3)],
+        delay: placed ? -99 : rand(0, 2.2), dur: rand(0.9, 1.8),
+      });
+    }
+  }
+
+  const easeOut = p => 1 - (1 - p) ** 3;
+
+  function drawStars() {
+    const el = (performance.now() - revealAt) / 1000;
+    for (const s of stars) {
+      const p = Math.min(1, Math.max(0, (el - s.delay) / s.dur));
+      if (p <= 0) continue;
+      const e = easeOut(p), x = s.sx + (s.x - s.sx) * e, y = s.sy + (s.y - s.sy) * e;
+      const tw = 0.6 + 0.4 * Math.sin(time * s.tw + s.ph);
+      const a = Math.min(1, p * 1.6) * tw;
+      if (p < 1) { // little streak while rushing in
+        const tx = x + (s.sx - s.x) * (1 - e) * 0.06, ty = y + (s.sy - s.y) * (1 - e) * 0.06;
+        ctx.strokeStyle = `rgba(${s.c},${a * 0.5})`; ctx.lineWidth = s.r;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(tx, ty); ctx.stroke();
+      }
+      const gs = s.r * 7;
+      ctx.globalAlpha = a * (s.r > 1.1 ? 0.9 : 0.45);
+      ctx.drawImage(glow, x - gs, y - gs, gs * 2, gs * 2);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = `rgba(${s.c},${a})`;
+      ctx.beginPath(); ctx.arc(x, y, s.r * 0.7, 0, 6.29); ctx.fill();
+    }
+  }
+
+  function spawnMeteor() {
+    const ang = rand(2.35, 2.75), sp = rand(9, 15);
+    meteors.push({
+      x: rand(W * 0.2, W * 1.15), y: rand(-60, H * 0.45),
+      vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
+      len: rand(110, 260), life: ri(45, 85), age: 0,
+      pink: Math.random() < 0.35,
+    });
+  }
+
+  function drawMeteors() {
+    for (const m of meteors) {
+      m.x += m.vx; m.y += m.vy; m.age++;
+      const a = Math.max(0, Math.min(1, m.age / 6, (m.life - m.age) / 18));
+      const sp = Math.hypot(m.vx, m.vy), tx = m.x - m.vx / sp * m.len, ty = m.y - m.vy / sp * m.len;
+      const lg = ctx.createLinearGradient(m.x, m.y, tx, ty);
+      lg.addColorStop(0, `rgba(255,255,255,${a})`);
+      lg.addColorStop(0.25, m.pink ? `rgba(255,190,230,${a * 0.6})` : `rgba(200,220,255,${a * 0.6})`);
+      lg.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.strokeStyle = lg; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(tx, ty); ctx.stroke();
+      ctx.globalAlpha = a; ctx.drawImage(glow, m.x - 10, m.y - 10, 20, 20); ctx.globalAlpha = 1;
+    }
+    meteors = meteors.filter(m => m.age < m.life);
+  }
+
+  function frame() {
+    time += 1 / 60;
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    skyA += (skyTarget - skyA) * 0.012;
+    if (skyA > 0.003) { ctx.globalAlpha = skyA; ctx.drawImage(bg, 0, 0, W, H); ctx.globalAlpha = 1; }
+    if (revealAt >= 0) drawStars();
+    if (Math.random() < autoRate) spawnMeteor();
+    drawMeteors();
+    requestAnimationFrame(frame);
+  }
+
+  function reveal() { if (revealAt < 0) { revealAt = performance.now(); skyTarget = 1; } }
+  function shower(n = 18) { for (let i = 0; i < n; i++) setTimeout(spawnMeteor, i * rand(90, 240)); }
+
+  addEventListener('resize', resize);
+  cv.addEventListener('click', () => { if (revealAt >= 0) spawnMeteor(); });
+
+  // =================================================================
+  //  SOUND (tiny WebAudio chime + music box loop)
+  // =================================================================
+  let actx = null, musicTimer = null, step = 0;
+  const midi = n => 440 * 2 ** ((n - 69) / 12);
+  function audio() { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); return actx; }
+  function note(n, type, vol, dur, when = 0) {
+    const a = audio(), o = a.createOscillator(), gn = a.createGain(), t0 = a.currentTime + when;
+    o.type = type; o.frequency.value = midi(n);
+    gn.gain.setValueAtTime(vol, t0); gn.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(gn).connect(a.destination); o.start(t0); o.stop(t0 + dur);
+  }
+  const chime = () => { note(76, 'sine', 0.08, 0.6); note(83, 'sine', 0.06, 0.9, 0.12); };
+  const CHORDS = [[60, 64, 67, 72], [57, 60, 64, 69], [53, 57, 60, 65], [55, 59, 62, 67]];
+  const ARP = [0, 1, 2, 3, 2, 1, 2, 1];
+  const MELODY = [[76, 0, 79, 0, 77, 76, 74, 0], [72, 0, 76, 0, 74, 72, 71, 0], [69, 0, 72, 0, 77, 76, 72, 0], [71, 0, 74, 0, 79, 77, 74, 0]];
+  function musicOn() {
+    if (musicTimer) return;
+    audio();
+    musicTimer = setInterval(() => {
+      const c = Math.floor(step / 8) % 4, s = step % 8;
+      note(CHORDS[c][ARP[s]], 'triangle', 0.04, 0.9);
+      if (s === 0) note(CHORDS[c][0] - 12, 'sine', 0.07, 2.4);
+      if (MELODY[c][s]) note(MELODY[c][s], 'sine', 0.05, 1.2);
+      step++;
+    }, 320);
+  }
+  function musicOff() { clearInterval(musicTimer); musicTimer = null; }
+
+  // =================================================================
+  //  INTRO / GUIDE / FINAL MESSAGE
+  // =================================================================
+  const intro = $('intro'), guideEl = $('guide'), deskIcon = $('deskIcon');
+  let finished = false;
+
+  async function playIntro() {
+    await sleep(900);
+    const lines = [...CONFIG.intro.map(t => [t, '']), [CONFIG.introHint, 'small']];
+    for (const [text, cls] of lines) {
+      const p = document.createElement('p'); p.textContent = text; p.className = cls; intro.appendChild(p);
+      requestAnimationFrame(() => requestAnimationFrame(() => p.classList.add('show')));
+      await sleep(2000);
+    }
+    deskIcon.classList.add('show', 'pulse');
+  }
+
+  function setGuide(html) {
+    if (!html) { guideEl.classList.remove('show'); return; }
+    guideEl.innerHTML = html; guideEl.classList.add('show');
+  }
+
+  function autoGuide() {
+    if (finished) return setGuide('');
+    if (!cmdWin.classList.contains('open')) return setGuide('เปิด <b>Command Prompt</b> ที่มุมซ้ายบนได้เลย');
+    if (smileCount === 1) return setGuide('ยิ้มแล้วใช่มั้ย 😊 ลองพิมพ์ <code>smile.bat</code> อีกรอบสิ');
+    if (cwd === 'NightSky' && sawSky) return setGuide('เจอแล้ว! ลองเปิดไฟล์ดู พิมพ์ <code>smile.bat</code> แล้วกด Enter');
+    if (cwd === 'NightSky') return setGuide('เข้ามาแล้ว~ พิมพ์ <code>dir</code> อีกทีเพื่อดูว่าข้างในมีอะไร');
+    if (cwd) return setGuide('ในนี้ไม่มีอะไรนะ ออกไปก่อนด้วย <code>cd ..</code>');
+    if (sawRoot) return setGuide('เห็นโฟลเดอร์ <b>NightSky</b> มั้ย? เข้าไปด้วยคำสั่ง <code>cd NightSky</code>');
+    setGuide('เริ่มจากพิมพ์ <code>dir</code> แล้วกด Enter เพื่อดูว่ามีอะไรอยู่บ้าง');
+  }
+
+  async function showFinal() {
+    const box = $('msg'); box.innerHTML = '';
+    for (const [i, text] of CONFIG.final.entries()) {
+      const p = document.createElement('p'); p.textContent = text; if (i > 0) p.className = 'sub'; box.appendChild(p);
+      requestAnimationFrame(() => requestAnimationFrame(() => p.classList.add('show')));
+      await sleep(2600);
+    }
+  }
+
+  // message box
+  const mbWrap = $('mbWrap');
+  let mbResolve = null;
+  function messageBox(text) {
+    $('mbText').textContent = text; mbWrap.classList.add('show'); chime();
+    setTimeout(() => $('mbOk').focus(), 50);
+    return new Promise(r => mbResolve = r);
+  }
+  function closeMB() { mbWrap.classList.remove('show'); if (mbResolve) { mbResolve(); mbResolve = null; } input.focus(); }
+  $('mbOk').onclick = closeMB; $('mbX').onclick = closeMB;
+
+  // =================================================================
+  //  CMD.EXE
+  // =================================================================
+  const cmdWin = $('cmdWin'), out = $('out'), row = $('row'), input = $('cmd'), ps = $('ps'), task = $('task');
+  const ROOT = `C:\\Users\\${CONFIG.user}`;
+  const FS = {
+    '': { dirs: ['Desktop', 'Documents', 'Downloads', 'Music', 'NightSky', 'Pictures'], files: [] },
+    NightSky: { dirs: [], files: [['readme.txt', 96], ['smile.bat', 128]] },
+  };
+  const FILE_TEXT = {
+    'readme.txt': 'สวัสดีพี่ 👋\nโฟลเดอร์นี้มีไฟล์สำคัญอยู่ไฟล์เดียว\nลองเปิด smile.bat ดูสิ',
+    'smile.bat': '@echo off\ntitle smile :)\nif "%SMILE%"=="" (\n  msg * "วันนี้ได้ยิ้มบ้างรึยัง?"\n) else (\n  call :wake_up_all_the_stars\n)',
+  };
+  let cwd = '', sawRoot = false, sawSky = false, smileCount = 0, booted = false, busy = false;
+  const history = []; let hIdx = 0;
+
+  const path = () => cwd ? `${ROOT}\\${cwd}` : ROOT;
+  const updatePrompt = () => ps.textContent = path() + '>';
+
+  function print(text = '', cls = '') {
+    const d = document.createElement('div'); d.className = 'ln ' + cls; d.textContent = text;
+    out.insertBefore(d, row); out.scrollTop = out.scrollHeight; return d;
+  }
+
+  async function lock(fn) {
+    busy = true; row.style.visibility = 'hidden';
+    try { await fn(); } finally { busy = false; row.style.visibility = ''; print(); out.scrollTop = out.scrollHeight; input.focus(); }
+  }
+
+  function openCmd() {
+    cmdWin.classList.add('open'); task.classList.remove('show');
+    intro.classList.add('hide'); deskIcon.classList.remove('pulse');
+    if (!booted) {
+      booted = true;
+      print('Night Sky OS [Version 10.0.2026.1113]');
+      print('(c) Night Sky Corporation. All rights reserved.');
+      print();
+      updatePrompt();
+    }
+    setTimeout(() => input.focus(), 30);
+    autoGuide();
+  }
+  function minimise() { cmdWin.classList.remove('open'); task.classList.add('show'); if (!finished) autoGuide(); }
+  function closeCmd() { cmdWin.classList.remove('open'); task.classList.remove('show'); if (!finished) autoGuide(); }
+
+  deskIcon.onclick = openCmd;
+  task.onclick = openCmd;
+  $('bMin').onclick = minimise;
+  $('bClose').onclick = closeCmd;
+  $('bMax').onclick = () => cmdWin.classList.toggle('max');
+  out.addEventListener('mouseup', () => { if (!getSelection().toString()) input.focus(); });
+
+  // drag the window by its title bar
+  let drag = null;
+  const bar = $('cmdBar');
+  bar.addEventListener('pointerdown', e => {
+    if (e.target.closest('button')) return;
+    const r = cmdWin.getBoundingClientRect();
+    cmdWin.classList.add('moved'); cmdWin.style.left = r.left + 'px'; cmdWin.style.top = r.top + 'px';
+    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top }; bar.setPointerCapture(e.pointerId);
+  });
+  bar.addEventListener('pointermove', e => {
+    if (!drag) return;
+    cmdWin.style.left = Math.min(innerWidth - 80, Math.max(-200, e.clientX - drag.dx)) + 'px';
+    cmdWin.style.top = Math.min(innerHeight - 40, Math.max(0, e.clientY - drag.dy)) + 'px';
+  });
+  bar.addEventListener('pointerup', () => drag = null);
+
+  // ---------- file system helpers ----------
+  const norm = s => s.replace(/"/g, '').replace(/\//g, '\\').replace(/\\+$/, '').replace(/\s+/g, '').toLowerCase();
+  function findDir(name, base = cwd) {
+    const n = norm(name), root = norm(ROOT);
+    if (n === '..') return base ? '' : null;
+    if (n === '.') return base;
+    if (n === '' || n === root || n === '~') return '';
+    const full = n.startsWith(root + '\\') ? n.slice(root.length + 1) : n;
+    if (base === '' || full !== n) {
+      const hit = FS[''].dirs.find(d => d.toLowerCase() === full);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  function findFile(name) {
+    let n = norm(name), dir = cwd;
+    const slash = n.lastIndexOf('\\');
+    if (slash >= 0) { dir = findDir(n.slice(0, slash)); n = n.slice(slash + 1); if (dir === null) return null; }
+    const list = (FS[dir] || { files: [] }).files;
+    const f = list.find(([fn]) => fn === n || fn.replace(/\.bat$/, '') === n);
+    return f ? f[0] : null;
+  }
+
+  function dirListing(dir) {
+    const d = new Date(), ds = d.toLocaleDateString('en-GB'), ts = d.toTimeString().slice(0, 5);
+    const node = FS[dir] || { dirs: [], files: [] };
+    print(' Volume in drive C has no label.');
+    print(' Volume Serial Number is 1113-2026');
+    print();
+    print(` Directory of ${dir ? ROOT + '\\' + dir : ROOT}`);
+    print();
+    const items = [...node.dirs.map(n => [n, null]), ...node.files].sort((a, b) => a[0].localeCompare(b[0]));
+    for (const [n, s] of [['.', null], ['..', null], ...items])
+      print(`${ds}  ${ts}    ${s === null ? '<DIR>         ' : String(s).padStart(14)} ${n}`);
+    const bytes = node.files.reduce((a, [, s]) => a + s, 0);
+    print(`${String(node.files.length).padStart(16)} File(s)${String(bytes).padStart(15)} bytes`);
+    print(`${String(node.dirs.length + 2).padStart(16)} Dir(s)  1,113,202,600,000 bytes free`);
+    if (dir === '') sawRoot = true;
+    if (dir === 'NightSky') sawSky = true;
+  }
+
+  // ---------- smile.bat ----------
+  function runSmile() {
+    smileCount++;
+    if (smileCount === 1) {
+      messageBox(CONFIG.alert).then(autoGuide);
+      return;
+    }
+    return lock(async () => {
+      print('Checking for a smile...');
+      const bar = print();
+      for (let i = 0; i <= 20; i++) { bar.textContent = '[' + '#'.repeat(i) + '.'.repeat(20 - i) + `] ${i * 5}%`; out.scrollTop = out.scrollHeight; await sleep(55); }
+      print('Smile detected :)', 'ok');
+      print('Calling all the stars...', 'ok');
+      await sleep(1100);
+      finished = true; setGuide('');
+      minimise();
+      musicOn();
+      reveal();
+      await sleep(2400);
+      autoRate = 0.01; shower(16);
+      await sleep(1200);
+      showFinal();
+    });
+  }
+
+  // ---------- commands ----------
+  const COMMANDS = {
+    help() {
+      print('For more information on a specific command, type HELP command-name');
+      [['CD', 'เข้า/ออกโฟลเดอร์ เช่น CD NightSky หรือ CD ..'], ['CLS', 'ล้างหน้าจอ'],
+       ['COLOR', 'เปลี่ยนสีตัวอักษร เช่น COLOR 0A'], ['DATE', 'แสดงวันที่'], ['DIR', 'แสดงไฟล์และโฟลเดอร์'],
+       ['ECHO', 'แสดงข้อความ'], ['EXIT', 'ปิดหน้าต่าง'], ['START', 'เปิดไฟล์ เช่น START smile.bat'],
+       ['TIME', 'แสดงเวลา'], ['TITLE', 'ตั้งชื่อหน้าต่าง'], ['TYPE', 'อ่านไฟล์ข้อความ เช่น TYPE readme.txt'], ['VER', 'แสดงเวอร์ชัน']]
+        .forEach(([c, d]) => print(c.padEnd(12) + d));
+      if (finished) { print(); print('Bonus:  SHOWER [n]   METEOR   MUSIC', 'ok'); }
+    },
+    cls() { out.querySelectorAll('.ln').forEach(l => l.remove()); },
+    cd(args, rest) {
+      if (!rest) return print(path());
+      const d = findDir(rest);
+      if (d === null) return print('The system cannot find the path specified.');
+      cwd = d; updatePrompt();
+    },
+    chdir(a, r) { COMMANDS.cd(a, r); },
+    dir(args) {
+      const target = args.filter(a => !a.startsWith('/')).join(' ');
+      if (!target) return dirListing(cwd);
+      const d = findDir(target);
+      if (d === null) { print(' Volume in drive C has no label.'); print(); print('File Not Found'); return; }
+      dirListing(d);
+    },
+    type(args, rest) {
+      if (!rest) return print('The syntax of the command is incorrect.');
+      const f = findFile(rest);
+      if (!f || !rest.includes('.')) return print('The system cannot find the file specified.');
+      FILE_TEXT[f].split('\n').forEach(l => print(l));
+    },
+    echo(a, rest) { print(rest || 'ECHO is on.'); },
+    color(args) {
+      const CON = ['#0c0c0c', '#0037da', '#13a10e', '#3a96dd', '#c50f1f', '#881798', '#c19c00', '#cccccc', '#767676', '#3b78ff', '#16c60c', '#61d6d6', '#e74856', '#b4009e', '#f9f1a5', '#f2f2f2'];
+      const code = (args[0] || '07').toUpperCase();
+      if (!/^[0-9A-F]{1,2}$/.test(code)) return print('Sets the default console foreground and background colors.');
+      const [b, f] = code.length === 1 ? ['0', code] : [code[0], code[1]];
+      if (b === f) return;
+      document.documentElement.style.setProperty('--cmd-fg', CON[parseInt(f, 16)]);
+      document.documentElement.style.setProperty('--cmd-bg', CON[parseInt(b, 16)]);
+    },
+    title(a, rest) { $('cmdTitle').textContent = rest || 'Command Prompt'; },
+    date() { print('The current date is: ' + new Date().toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }).replace(',', '')); },
+    time() { const d = new Date(); print('The current time is: ' + d.toTimeString().slice(0, 8) + '.' + String(Math.floor(d.getMilliseconds() / 10)).padStart(2, '0')); },
+    ver() { print(); print('Night Sky OS [Version 10.0.2026.1113]'); },
+    whoami() { print(`nightsky\\${CONFIG.user.toLowerCase()}`); },
+    exit() { closeCmd(); },
+    start(args, rest) { if (rest) return run(rest); },
+    shower(args) { if (!finished) return notFound('shower'); shower(Math.min(60, parseInt(args[0]) || 20)); },
+    meteor() { if (!finished) return notFound('meteor'); spawnMeteor(); },
+    music() { if (!finished) return notFound('music'); if (musicTimer) { musicOff(); print('music off'); } else { musicOn(); print('music on ♪'); } },
+  };
+
+  function notFound(name) {
+    print(`'${name}' is not recognized as an internal or external command,`);
+    print('operable program or batch file.');
+  }
+
+  let hint = '';
+  function run(raw) {
+    const m = raw.match(/^(\S+)\s*(.*)$/);
+    const name = m[1], rest = m[2].trim(), args = rest ? rest.split(/\s+/) : [];
+    const key = name.toLowerCase();
+    if (key === 'cd..') return COMMANDS.cd([], '..');
+    if (COMMANDS[key]) return COMMANDS[key](args, rest);
+    const file = findFile(raw);
+    if (file === 'smile.bat') return runSmile();
+    if (file === 'readme.txt') { FILE_TEXT[file].split('\n').forEach(l => print(l)); return; }
+    notFound(name);
+    if (/smile/i.test(name) && cwd !== 'NightSky')
+      hint = 'smile.bat ไม่ได้อยู่ตรงนี้นะ ต้องเข้าโฟลเดอร์ก่อน: <code>cd NightSky</code>';
+  }
+
+  input.addEventListener('keydown', e => {
+    if (busy || mbWrap.classList.contains('show')) { e.preventDefault(); return; }
+    if (e.key === 'Enter') {
+      const raw = input.value;
+      print(path() + '>' + raw);
+      input.value = '';
+      if (!raw.trim()) return;
+      history.push(raw.trim()); hIdx = history.length;
+      hint = '';
+      run(raw.trim());
+      if (!busy) { print(); autoGuide(); if (hint) setGuide(hint); }
+    } else if (e.key === 'ArrowUp') {
+      if (hIdx > 0) input.value = history[--hIdx]; e.preventDefault();
+    } else if (e.key === 'ArrowDown') {
+      if (hIdx < history.length - 1) input.value = history[++hIdx]; else { hIdx = history.length; input.value = ''; }
+      e.preventDefault();
+    }
+  });
+  addEventListener('keydown', e => {
+    // the Enter that opened the box bubbles here from the input; don't let it close the box
+    if (e.key === 'Enter' && (e.target === input || e.target.closest('button'))) return;
+    if (mbWrap.classList.contains('show') && (e.key === 'Enter' || e.key === 'Escape')) { e.preventDefault(); closeMB(); }
+  });
+
+  // ---------- start ----------
+  updatePrompt();
+  playIntro();
+  resize();
+  frame();
+})();
+</script>
+</body>
+</html>
